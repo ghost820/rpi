@@ -1,5 +1,6 @@
 use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
+use std::mem;
 use std::os::fd::AsRawFd;
 
 const LIRC_MODE_MODE2: u32 = 0x00000004;
@@ -22,8 +23,28 @@ fn main() {
     println!("Hello, world!");
 }
 
+fn ir_send(path: &str, signal: &[u32], carrier_hz: u32, duty_cycle: u32) -> io::Result<()> {
+    let mut file = OpenOptions::new().write(true).open(path)?;
+    let fd = file.as_raw_fd();
+
+    let mut lirc_mode = LIRC_MODE_PULSE;
+    let mut carrier_hz = carrier_hz;
+    let mut duty_cycle = duty_cycle;
+    ioctl(fd, LIRC_SET_SEND_MODE, &mut lirc_mode)?;
+    ioctl(fd, LIRC_SET_SEND_CARRIER, &mut carrier_hz)?;
+    ioctl(fd, LIRC_SET_SEND_DUTY_CYCLE, &mut duty_cycle)?;
+
+    let mut buf = Vec::with_capacity(mem::size_of_val(signal));
+    for &t in signal {
+        buf.extend_from_slice(&t.to_ne_bytes());
+    }
+    file.write_all(&buf)?;
+
+    Ok(())
+}
+
 fn ir_recv(path: &str, timeout_us: u32) -> io::Result<Vec<u32>> {
-    let file = OpenOptions::new().read(true).open(path)?;
+    let mut file = OpenOptions::new().read(true).open(path)?;
     let fd = file.as_raw_fd();
 
     let mut lirc_mode = LIRC_MODE_MODE2;
